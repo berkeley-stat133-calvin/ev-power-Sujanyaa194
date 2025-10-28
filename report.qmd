@@ -9,26 +9,152 @@ format: typst
 
 ```{r}
 
+library(tidyr)
+library(ggplot2)
+library(dplyr)
+library(readr) 
+library(readxl)
+library(stringr)
+
+```
+
+```{r}
+total_use_2023 <- read_csv("data/total-use-2023.csv")
+ev_registrations_by_state_2023 <- read_csv("data/ev-registrations-by-state-2023.csv")
+
 ```
 
 ## **Part 1:** **Defining Research Question**
 
-Chosen Question:
+Chosen Question: Do states with higher renewable energy usage have more EV registrations in 2023??
+
+```{r}
+head(total_use_2023)
+```
 
 ## **Part 2: Data Preparation and Cleaning**
 
 ```{r}
 
+use_2023 = total_use_2023 |> pivot_longer(cols = -1 , names_to = "States", values_to = "Energy_usage")
+
+use_2023 = use_2023 |> 
+  group_by(Energy_Source)|>
+  filter(Energy_Source == "total renewable-energy")|>
+  arrange(desc(Energy_usage))|>
+  slice(-1)|>
+  drop_na()|>
+  rename(State = 'States')
+
+
+print(use_2023)
+
+```
+
+```         
+```
+
+```{r}
+ev_new_2023= ev_registrations_by_state_2023 |> 
+  rename(States = "electric vehicle registrations_by_state (2023)",
+         Count = "...2"  )|>
+  drop_na()
+
+ev_new_2023 = ev_new_2023|> 
+  slice(-1)|>
+  mutate(
+   Count = str_remove_all(Count, "[^0-9]"),  
+   Count = as.numeric(Count)                 
+)
+
+
+    
+```
+
+```{r}
+ev_new_2023_states = ev_new_2023|>
+mutate(
+    States = str_to_title(str_trim(States)),
+    States = state.abb[match(States, state.name)])
+
+
+```
+
+```{r}
+ev_new_2023_states = ev_new_2023_states |> drop_na()|>
+  rename(State = States)
+
+ev_new_2023_states
 ```
 
 ## **Part 3: Joining / Pivoting Datasets for Analysis**
 
 ```{r}
+  
+combined =ev_new_2023_states|>
+  left_join(use_2023, by='State')|>
+  rename(Count_of_ev = Count)
+
+
+combined 
+
+
 
 ```
+
+or(combined\$Count_of_ev, combined\$Energy_usage, use = "complete.obs")
 
 ## **Part 4: Mapping Visualization**
 
 ```{r}
 
+ggplot(combined, aes(x = Energy_usage, y = Count_of_ev)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  scale_x_continuous() +
+  scale_y_log10() 
+  labs(title = "EV Registrations vs Renewable Energy Usage",
+       x = "Total Renewable Energy Usage (kWh)",
+       y = "EV Registrations")
+```
+
+```{r}
+state_coords <- data.frame(
+  State = state.abb,
+  lat = state.center$y,
+  lng = state.center$x
+)
+
+```
+
+```{r}
+combined_with_coords <- combined |> 
+  left_join(state_coords, by = c("State" = "State"))
+
+print(combined_with_coords)
+```
+
+```{r}
+library(rnaturalearth)
+map_north_america <- ne_countries(continent = "north america", returnclass = "sf")
+```
+
+```{r}
+
+ggplot() +
+  geom_sf(data = map_north_america, fill = "gray95", color = "white") +
+  geom_point(
+    data = combined_with_coords,
+    aes(x = lng, y = lat, size = Count_of_ev, color = Energy_usage),
+    alpha = 0.8
+  ) +
+  scale_color_viridis_c(name = "Renewable Energy Usage") +
+  coord_sf(xlim = c(-150, -60), ylim = c(10, 50), expand = FALSE) +
+  labs(
+    title = "EV Registrations and Renewable Energy Usage in North America (2023)",
+    x = "Longitude",
+    y = "Latitude"
+  ) +
+  theme_minimal() +
+  theme(panel.background = element_blank())
 ```
